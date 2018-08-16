@@ -18,65 +18,98 @@
 
 set -e
 
+SERVICE_NAME="$(basename "$0")"
+PIDFILE="/var/run/$SERVICE_NAME.pid"
+
 #CATALINA_HOME is the location of the bin files of Tomcat  
-export CATALINA_HOME=/home/xwiki/tomcat 
- 
+CATALINA_HOME="/home/xwiki/tomcat"
 #CATALINA_BASE is the location of the configuration files of this instance of Tomcat
-export CATALINA_BASE=/home/xwiki/tomcat
- 
+CATALINA_BASE="/home/xwiki/tomcat"
+CATALINA_CMD="$CATALINA_HOME/bin/catalina.sh"
+
 #TOMCAT_USER is the default user of tomcat
-export TOMCAT_USER=xwiki
- 
+TOMCAT_USER=xwiki
+TOMCAT_GROUP=xwiki
 #TOMCAT_USAGE is the message if this script is called without any options
 TOMCAT_USAGE="Usage: $0 {\e[00;32mstart\e[00m|\e[00;31mstop\e[00m|\e[00;31mkill\e[00m|\e[00;32mstatus\e[00m|\e[00;31mrestart\e[00m}"
- 
+
 #SHUTDOWN_WAIT is wait time in seconds for java proccess to stop
 SHUTDOWN_WAIT=20
- 
+
+# check script is started with root priviledges
+if [ `id -u` -ne 0 ]; then
+	echo -e "\e[00;31mYou need root privileges to run this script. Exiting\e[00m"
+	exit 1
+fi
+
+# check whether TOMCAT_USER exists
+if [ `user_exists $TOMCAT_USER` = "0" ]; then
+	echo -e "\e[00;31mTomcat user $TOMCAT_USER does not exists. Exiting\e[00m"
+	exit 1
+fi
+
+# check whether CATALINA_CMD is set properly
+if [ ! -x "$CATALINA_CMD" ]; then
+    echo -e "\e[00;31mService manager does not exists or is not executable. Exiting\e[00m"
+    exit 1
+fi
+
+# read configuration variable file if it is present
+[ -r /etc/default/$SERVICE_NAME ] && . /etc/default/$SERVICE_NAME
+
+# load the VERBOSE setting and other rcS variables
+. /lib/init/vars.sh
+
+# Define LSB log_* functions.
+# Depend on lsb-base (>= 3.0-6) to ensure that this file is present.
+. /lib/lsb/init-functions
+
+
+#
+# look for running PID of the tomcat service
+#
 tomcat_pid() {
         echo `ps -fe | grep $CATALINA_BASE | grep -v grep | tr -s " "|cut -d" " -f2`
 }
- 
+
+#
+# Start tomcat daemon/service
+#
 start() {
   pid=$(tomcat_pid)
-  if [ -n "$pid" ]
-  then
+  if [ -n "$pid" ]; then
     echo -e "\e[00;31mTomcat is already running (pid: $pid)\e[00m"
   else
+    [ -r $PIDFILE ] && rm -f $PIDFILE
     # Start tomcat
     echo -e "\e[00;32mStarting tomcat\e[00m"
-    #ulimit -n 100000
-    #umask 007
-    #/bin/su -p -s /bin/sh $TOMCAT_USER
-        if [ `user_exists $TOMCAT_USER` = "1" ]
-        then
-                /bin/su $TOMCAT_USER -c "$CATALINA_HOME/bin/catalina.sh start"
-        else
-                echo -e "\e[00;31mTomcat user $TOMCAT_USER does not exists. Exiting\e[00m"
-                exit 1
-        fi
-        status
+	start-stop-daemon --start --chuid $TOMCAT_USER:$TOMCAT_GROUP --pidfile $PIDFILE --exec "$CATALINA_CMD start"
+    status
   fi
   return 0
 }
- 
+
+#
+#
+#
 status(){
-          pid=$(tomcat_pid)
-          if [ -n "$pid" ]
-            then echo -e "\e[00;32mTomcat is running with pid: $pid\e[00m"
-          else
-            echo -e "\e[00;31mTomcat is not running\e[00m"
-            return 3
-          fi
+  pid=$(tomcat_pid)
+  if [ -n "$pid" ]; then 
+    echo -e "\e[00;32mTomcat is running with pid: $pid\e[00m"
+  else
+    echo -e "\e[00;31mTomcat is not running\e[00m"
+    return 3
+  fi
 }
 
+#
+#
+#
 stop() {
   pid=$(tomcat_pid)
-  if [ -n "$pid" ]
-  then
+  if [ -n "$pid" ]; then
     echo -e "\e[00;31mStoping Tomcat\e[00m"
-    #/bin/su -p -s /bin/sh $TOMCAT_USER
-        /bin/su $TOMCAT_USER -c "$CATALINA_HOME/bin/catalina.sh stop"
+    start-stop-daemon --start --background --chuid $TOMCAT_USER:$TOMCAT_GROUP --make-pidfile --pidfile $PIDFILE --exec "$CATALINA_CMD stop"
  
     let kwait=$SHUTDOWN_WAIT
     count=0;
@@ -91,13 +124,18 @@ stop() {
       echo -n -e "\n\e[00;31mkilling processes didn't stop after $SHUTDOWN_WAIT seconds\e[00m"
       terminate
     fi
+    
+    #TODO: rm -f $PIDFILE
   else
     echo -e "\e[00;31mTomcat is not running\e[00m"
   fi
  
   return 0
 }
- 
+
+#
+#
+#
 user_exists(){
         if id -u $1 >/dev/null 2>&1; then
           echo "1"
