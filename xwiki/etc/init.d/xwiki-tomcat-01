@@ -83,7 +83,7 @@ start() {
     [ -r $PIDFILE ] && rm -f $PIDFILE
     # Start tomcat
     echo -e "\e[00;32mStarting tomcat\e[00m"
-	start-stop-daemon --start --chuid $TOMCAT_USER:$TOMCAT_GROUP --pidfile $PIDFILE --exec "$CATALINA_CMD start"
+	start-stop-daemon --start --chuid $TOMCAT_USER:$TOMCAT_GROUP --pidfile $PIDFILE --exec $CATALINA_CMD -- start
     status
   fi
   return 0
@@ -109,7 +109,7 @@ stop() {
   pid=$(tomcat_pid)
   if [ -n "$pid" ]; then
     echo -e "\e[00;31mStoping Tomcat\e[00m"
-    start-stop-daemon --start --background --chuid $TOMCAT_USER:$TOMCAT_GROUP --make-pidfile --pidfile $PIDFILE --exec "$CATALINA_CMD stop"
+    start-stop-daemon --start --background --chuid $TOMCAT_USER:$TOMCAT_GROUP --make-pidfile --pidfile $PIDFILE --exec $CATALINA_CMD -- stop
  
     let kwait=$SHUTDOWN_WAIT
     count=0;
